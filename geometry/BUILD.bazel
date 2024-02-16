@@ -20,6 +20,7 @@ drake_cc_package_library(
     deps = [
         ":collision_filter_declaration",
         ":collision_filter_manager",
+        ":deformable_mesh_with_bvh",
         ":drake_visualizer",
         ":drake_visualizer_params",
         ":geometry_frame",
@@ -36,6 +37,7 @@ drake_cc_package_library(
         ":make_mesh_for_deformable",
         ":meshcat",
         ":meshcat_animation",
+        ":meshcat_graphviz",
         ":meshcat_point_cloud_visualizer",
         ":meshcat_visualizer",
         ":meshcat_visualizer_params",
@@ -113,19 +115,34 @@ drake_cc_library(
 )
 
 drake_cc_library(
+    name = "deformable_mesh_with_bvh",
+    srcs = ["deformable_mesh_with_bvh.cc"],
+    hdrs = ["deformable_mesh_with_bvh.h"],
+    deps = [
+        "//geometry/proximity:bvh",
+        "//geometry/proximity:bvh_updater",
+        "//geometry/proximity:volume_mesh",
+    ],
+)
+
+drake_cc_library(
     name = "drake_visualizer",
     srcs = ["drake_visualizer.cc"],
     hdrs = ["drake_visualizer.h"],
-    deps = [
+    interface_deps = [
         ":drake_visualizer_params",
         ":geometry_roles",
         ":geometry_version",
         ":scene_graph",
         "//common:essential",
-        "//lcm:drake_lcm",
-        "//lcmtypes:viewer",
+        "//lcm:interface",
         "//systems/framework:context",
         "//systems/framework:leaf_system",
+    ],
+    deps = [
+        "//lcm:drake_lcm",
+        "//lcmtypes:viewer",
+        "//systems/lcm:lcm_system_graphviz",
     ],
 )
 
@@ -447,13 +464,23 @@ drake_cc_googletest(
 
 drake_cc_library(
     name = "meshcat",
-    srcs = ["meshcat.cc"],
+    srcs = [
+        "meshcat.cc",
+        "meshcat_file_storage_internal.cc",
+        "meshcat_internal.cc",
+    ],
     hdrs = [
         "meshcat.h",
-        "meshcat_types.h",
+        "meshcat_file_storage_internal.h",
+        "meshcat_internal.h",
+        "meshcat_params.h",
+        "meshcat_types_internal.h",
     ],
     data = [":meshcat_resources"],
-    install_hdrs_exclude = ["meshcat_types.h"],
+    install_hdrs_exclude = [
+        "meshcat_internal.h",
+        "meshcat_types_internal.h",
+    ],
     interface_deps = [
         ":meshcat_animation",
         ":rgba",
@@ -469,8 +496,10 @@ drake_cc_library(
         "//common:find_resource",
         "//common:network_policy",
         "//common:scope_exit",
+        "//common:sha256",
         "@common_robotics_utilities",
         "@msgpack_internal//:msgpack",
+        "@nlohmann_internal//:nlohmann",
         "@stduuid_internal//:stduuid",
         "@uwebsockets_internal//:uwebsockets",
     ],
@@ -481,8 +510,7 @@ drake_cc_binary(
     testonly = True,
     srcs = ["test/meshcat_manual_test.cc"],
     data = [
-        ":test/env_256_brick_room.jpg",
-        ":test/env_256_cornell_box.png",
+        ":environment_maps",
         "//examples/kuka_iiwa_arm:models",
         "//geometry/render:test_models",
         "//manipulation/models/iiwa_description:models",
@@ -493,6 +521,7 @@ drake_cc_binary(
     deps = [
         ":meshcat",
         ":meshcat_visualizer",
+        "//common:add_text_logging_gflags",
         "//common/test_utilities:maybe_pause_for_user",
         "//multibody/meshcat:contact_visualizer",
         "//multibody/parsing",
@@ -513,8 +542,8 @@ drake_py_binary(
 drake_cc_googletest(
     name = "meshcat_test",
     data = [
+        ":environment_maps",
         ":meshcat_websocket_client",
-        ":test/env_256_cornell_box.png",
         "//geometry/render:test_models",
     ],
     tags = [
@@ -525,6 +554,33 @@ drake_cc_googletest(
         "//common/test_utilities:eigen_matrix_compare",
         "//common/test_utilities:expect_throws_message",
         "@msgpack_internal//:msgpack",
+    ],
+)
+
+drake_cc_googletest(
+    name = "meshcat_file_storage_internal_test",
+    tags = ["cpu:2"],
+    deps = [
+        ":meshcat",
+    ],
+)
+
+drake_cc_googletest(
+    name = "meshcat_internal_test",
+    data = [
+        "//geometry/render:test_models",
+    ],
+    deps = [
+        ":meshcat",
+        "@nlohmann_internal//:nlohmann",
+    ],
+)
+
+drake_cc_googletest(
+    name = "meshcat_params_test",
+    deps = [
+        ":meshcat",
+        "//common/yaml:yaml_io",
     ],
 )
 
@@ -543,6 +599,7 @@ drake_cc_library(
     hdrs = ["meshcat_point_cloud_visualizer.h"],
     deps = [
         ":meshcat",
+        ":meshcat_graphviz",
         ":rgba",
         ":utilities",
         "//perception:point_cloud",
@@ -558,6 +615,22 @@ drake_cc_googletest(
         "//systems/analysis:simulator",
         "//systems/framework:diagram_builder",
         "//systems/primitives:constant_value_source",
+    ],
+)
+
+drake_cc_library(
+    name = "meshcat_graphviz",
+    srcs = ["meshcat_graphviz.cc"],
+    hdrs = ["meshcat_graphviz.h"],
+    deps = [
+        "//systems/framework:system_base",
+    ],
+)
+
+drake_cc_googletest(
+    name = "meshcat_graphviz_test",
+    deps = [
+        ":meshcat_graphviz",
     ],
 )
 
@@ -578,6 +651,7 @@ drake_cc_library(
     deps = [
         ":geometry_roles",
         ":meshcat",
+        ":meshcat_graphviz",
         ":meshcat_visualizer_params",
         ":rgba",
         ":scene_graph",
@@ -630,6 +704,7 @@ filegroup(
     testonly = 1,
     srcs = [
         "test/cube_as_6_squares.vtk",
+        "test/extruded_u_volume_mesh.vtk",
         "test/non_convex_mesh.vtk",
         "test/one_negative_tetrahedron.vtk",
         "test/one_tetrahedron.vtk",
@@ -644,6 +719,17 @@ filegroup(
     testonly = 1,
     srcs = [
         "test/quad_cube.stl",
+    ],
+)
+
+filegroup(
+    name = "environment_maps",
+    testonly = 1,
+    srcs = [
+        "test/env_256_brick_room.jpg",
+        "test/env_256_cornell_box.png",
+        "test/env_256_six_color_room.hdr",
+        "test/env_256_six_color_room.png",
     ],
 )
 
@@ -665,11 +751,22 @@ drake_cc_googletest(
 )
 
 drake_cc_googletest(
+    name = "deformable_mesh_with_bvh_test",
+    deps = [
+        ":deformable_mesh_with_bvh",
+        "//common/test_utilities:eigen_matrix_compare",
+        "//geometry/proximity:make_box_mesh",
+    ],
+)
+
+drake_cc_googletest(
     name = "drake_visualizer_test",
     deps = [
         ":drake_visualizer",
         "//common/test_utilities:eigen_matrix_compare",
         "//common/test_utilities:expect_throws_message",
+        "//lcm",
+        "//lcmtypes:viewer",
         "//systems/analysis:simulator",
     ],
 )
@@ -833,6 +930,7 @@ drake_cc_googletest(
 
 drake_cc_googletest(
     name = "shape_to_string_test",
+    copts = ["-Wno-deprecated-declarations"],
     deps = [
         ":shape_to_string",
     ],

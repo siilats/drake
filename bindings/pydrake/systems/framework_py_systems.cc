@@ -12,7 +12,6 @@
 #include "drake/systems/framework/diagram.h"
 #include "drake/systems/framework/leaf_system.h"
 #include "drake/systems/framework/system.h"
-#include "drake/systems/framework/system_html.h"
 #include "drake/systems/framework/system_scalar_converter.h"
 #include "drake/systems/framework/system_visitor.h"
 #include "drake/systems/framework/vector_system.h"
@@ -94,9 +93,7 @@ struct Impl {
     using Base::DeclareDiscreteState;
     using Base::DeclareInitializationEvent;
     using Base::DeclareNumericParameter;
-    using Base::DeclarePeriodicDiscreteUpdateNoHandler;
     using Base::DeclarePeriodicEvent;
-    using Base::DeclarePeriodicPublishNoHandler;
     using Base::DeclarePeriodicUnrestrictedUpdateEvent;
     using Base::DeclarePerStepEvent;
     using Base::DeclareStateOutputPort;
@@ -107,14 +104,12 @@ struct Impl {
     using Base::get_mutable_forced_unrestricted_update_events;
     using Base::MakeWitnessFunction;
 
-    // Because `LeafSystem<T>::DoPublish` is protected, and we had to override
-    // this method in `PyLeafSystem`, expose the method here for direct(-ish)
-    // access.
-    // (Otherwise, we get an error about inaccessible downcasting when trying to
-    // bind `PyLeafSystem::DoPublish` to `py::class_<LeafSystem<T>, ...>`.
-    using Base::DoCalcDiscreteVariableUpdates;
+    // Because `LeafSystem<T>::DoCalcTimeDerivatives` is protected, and we had
+    // to override this method in `PyLeafSystem`, expose the method here for
+    // direct(-ish) access. (Otherwise, we get an error about inaccessible
+    // downcasting when trying to bind `PyLeafSystem::DoCalcTimeDerivatives` to
+    // `py::class_<LeafSystem<T>, ...>`.
     using Base::DoCalcTimeDerivatives;
-    using Base::DoPublish;
   };
 
   // Provide flexible inheritance to leverage prior binding information, per
@@ -128,41 +123,18 @@ struct Impl {
 
     // Trampoline virtual methods.
 
-    // TODO(sherm): This overload should be deprecated and removed; the
-    // preferred workflow is to register callbacks with Declare*PublishEvent.
-    void DoPublish(const Context<T>& context,
-        const vector<const PublishEvent<T>*>& events) const override {
+    void DoCalcTimeDerivatives(const Context<T>& context,
+        ContinuousState<T>* derivatives) const override {
       // Yuck! We have to dig in and use internals :(
       // We must ensure that pybind only sees pointers, since this method may
       // be called from C++, and pybind will not have seen these objects yet.
       // @see https://github.com/pybind/pybind11/issues/1241
       // TODO(eric.cousineau): Figure out how to supply different behavior,
       // possibly using function wrapping.
-      PYBIND11_OVERLOAD_INT(void, LeafSystem<T>, "DoPublish", &context, events);
-      // If the macro did not return, use default functionality.
-      Base::DoPublish(context, events);
-    }
-
-    void DoCalcTimeDerivatives(const Context<T>& context,
-        ContinuousState<T>* derivatives) const override {
-      // See `DoPublish` for explanation.
       PYBIND11_OVERLOAD_INT(
           void, LeafSystem<T>, "DoCalcTimeDerivatives", &context, derivatives);
       // If the macro did not return, use default functionality.
       Base::DoCalcTimeDerivatives(context, derivatives);
-    }
-
-    // TODO(sherm): This overload should be deprecated and removed; the
-    // preferred workflow is to register callbacks with
-    // Declare*DiscreteUpdateEvent.
-    void DoCalcDiscreteVariableUpdates(const Context<T>& context,
-        const std::vector<const DiscreteUpdateEvent<T>*>& events,
-        DiscreteValues<T>* discrete_state) const override {
-      // See `DoPublish` for explanation.
-      PYBIND11_OVERLOAD_INT(void, LeafSystem<T>,
-          "DoCalcDiscreteVariableUpdates", &context, events, discrete_state);
-      // If the macro did not return, use default functionality.
-      Base::DoCalcDiscreteVariableUpdates(context, events, discrete_state);
     }
 
     // This actually changes the signature of DoGetWitnessFunction,
@@ -172,6 +144,7 @@ struct Impl {
     // trampoline if this is needed outside of LeafSystem.
     void DoGetWitnessFunctions(const Context<T>& context,
         std::vector<const WitnessFunction<T>*>* witnesses) const override {
+      py::gil_scoped_acquire guard;
       auto wrapped =
           [&]() -> std::optional<std::vector<const WitnessFunction<T>*>> {
         PYBIND11_OVERLOAD_INT(
@@ -247,18 +220,6 @@ struct Impl {
    public:
     using Base = py::wrapper<VectorSystemPublic>;
     using Base::Base;
-
-    // Trampoline virtual methods.
-    void DoPublish(const Context<T>& context,
-        const vector<const PublishEvent<T>*>& events) const override {
-      // Copied from above, since we cannot use `PyLeafSystemBase` due to final
-      // overrides of some methods.
-      // TODO(eric.cousineau): Make this more granular?
-      PYBIND11_OVERLOAD_INT(
-          void, VectorSystem<T>, "DoPublish", &context, events);
-      // If the macro did not return, use default functionality.
-      Base::DoPublish(context, events);
-    }
 
     void DoCalcVectorOutput(const Context<T>& context,
         const Eigen::VectorBlock<const VectorX<T>>& input,
@@ -756,14 +717,6 @@ Note: The above is for the C++ documentation. For Python, use
               self->DeclareInitializationEvent(event);
             },
             py::arg("event"), doc.LeafSystem.DeclareInitializationEvent.doc)
-        .def("DeclarePeriodicPublishNoHandler",
-            &LeafSystemPublic::DeclarePeriodicPublishNoHandler,
-            py::arg("period_sec"), py::arg("offset_sec") = 0.,
-            doc.LeafSystem.DeclarePeriodicPublishNoHandler.doc)
-        .def("DeclarePeriodicDiscreteUpdateNoHandler",
-            &LeafSystemPublic::DeclarePeriodicDiscreteUpdateNoHandler,
-            py::arg("period_sec"), py::arg("offset_sec") = 0.,
-            doc.LeafSystem.DeclarePeriodicDiscreteUpdateNoHandler.doc)
         .def("DeclarePeriodicPublishEvent",
             WrapCallbacks(
                 [](PyLeafSystem* self, double period_sec, double offset_sec,
@@ -937,8 +890,6 @@ Note: The above is for the C++ documentation. For Python, use
             py_rvp::reference_internal, py::arg("description"),
             py::arg("direction_type"), py::arg("calc"), py::arg("e"),
             doc.LeafSystem.MakeWitnessFunction.doc_4args)
-        .def("DoPublish", &LeafSystemPublic::DoPublish,
-            doc.LeafSystem.DoPublish.doc)
         // Continuous state.
         .def("DeclareContinuousState",
             py::overload_cast<int>(&LeafSystemPublic::DeclareContinuousState),
@@ -979,9 +930,6 @@ Note: The above is for the C++ documentation. For Python, use
             py::arg("num_state_variables"),
             doc.LeafSystem.DeclareDiscreteState.doc_1args_num_state_variables)
         .def("DoCalcTimeDerivatives", &LeafSystemPublic::DoCalcTimeDerivatives)
-        .def("DoCalcDiscreteVariableUpdates",
-            &LeafSystemPublic::DoCalcDiscreteVariableUpdates,
-            doc.LeafSystem.DoCalcDiscreteVariableUpdates.doc)
         // Abstract state.
         .def("DeclareAbstractState",
             py::overload_cast<const AbstractValue&>(
@@ -1302,14 +1250,6 @@ void DoScalarIndependentDefinitions(py::module m) {
     converter.attr("SupportedConversionPairs") =
         GetPyParamList(ConversionPairs{});
   }
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-  m.def("GenerateHtml",
-      WrapDeprecated(doc.GenerateHtml.doc_deprecated, &GenerateHtml),
-      py::arg("system"), py::arg("initial_depth") = 1,
-      doc.GenerateHtml.doc_deprecated);
-#pragma GCC diagnostic pop
 }
 
 }  // namespace

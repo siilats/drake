@@ -10,12 +10,6 @@
 
 MODULE_SETTINGS = {
     # First, we'll configure VTK's first-party utility libraries.
-    "ABI": {
-        "cmake_defines": [
-            "VTK_ABI_NAMESPACE_BEGIN=inline namespace drake_vendor __attribute__ ((visibility (\"hidden\"))) {",  # noqa
-            "VTK_ABI_NAMESPACE_END=}",
-        ],
-    },
     "VTK::kwiml": {
         "cmake_defines": [
             # Match the Utilities/KWIML/vtkkwiml/CMakeLists.txt value. (This
@@ -33,21 +27,23 @@ MODULE_SETTINGS = {
         # exceptions noted inline below).
         "srcs_glob_exclude": ["**"],
         "srcs_extra": [
+            # These files are enabled by default upstream, but Drake doesn't
+            # need them:
+            #  CommandLineArguments.cxx
+            #  EncodingC.c
+            #  EncodingCXX.cxx
+            #  FStream.cxx
+            #  Glob.cxx
+            #  ProcessUNIX.c
+            #  String.c
+            #  System.c
+            #  SystemInformation.cxx
             "Utilities/KWSys/vtksys/Base64.c",
-            # CommandLineArguments.cxx is unused in Drake, so is omitted here.
             "Utilities/KWSys/vtksys/Directory.cxx",
             "Utilities/KWSys/vtksys/DynamicLoader.cxx",
-            "Utilities/KWSys/vtksys/EncodingC.c",
-            "Utilities/KWSys/vtksys/EncodingCXX.cxx",
-            "Utilities/KWSys/vtksys/FStream.cxx",
-            # Glob.cxx is unused in Drake, so is omitted here.
             "Utilities/KWSys/vtksys/MD5.c",
-            "Utilities/KWSys/vtksys/ProcessUNIX.c",
             "Utilities/KWSys/vtksys/RegularExpression.cxx",
-            "Utilities/KWSys/vtksys/String.c",
             "Utilities/KWSys/vtksys/Status.cxx",
-            "Utilities/KWSys/vtksys/System.c",
-            "Utilities/KWSys/vtksys/SystemInformation.cxx",
             "Utilities/KWSys/vtksys/SystemTools.cxx",
         ],
         "cmake_defines": [
@@ -115,7 +111,6 @@ MODULE_SETTINGS = {
         ],
         "included_cxxs": [
             "Common/Core/vtkMersenneTwister_Private.cxx",
-            "Common/Core/vtkVariantToNumeric.cxx",
         ],
         "srcs_extra": [
             # Sources in nested subdirs are not globbed by default, so we need
@@ -137,7 +132,15 @@ MODULE_SETTINGS = {
             "CMake/vtkVersion.cmake",
         ],
         "cmake_defines": [
+            # Emulate the concatenation found in the root CMakeLists.txt.
+            "VTK_VERSION=@VTK_MAJOR_VERSION@.@VTK_MINOR_VERSION@.@VTK_BUILD_VERSION@",  # noqa
+            # ABI
+            "VTK_HAS_ABI_NAMESPACE=1",
+            "VTK_ABI_NAMESPACE_NAME=drake_vendor",
+            "VTK_ABI_NAMESPACE_BEGIN=inline namespace drake_vendor __attribute__ ((visibility (\"hidden\"))) {",  # noqa
+            "VTK_ABI_NAMESPACE_END=}",
             # Features that are available on the host platform.
+            "VTK_HAS_CXXABI_DEMANGLE=1",
             "VTK_HAS_ISFINITE=1",
             "VTK_HAS_ISINF=1",
             "VTK_HAS_ISNAN=1",
@@ -156,6 +159,7 @@ MODULE_SETTINGS = {
             "VTK_ALL_NEW_OBJECT_FACTORY=1",
             "VTK_ALWAYS_OPTIMIZE_ARRAY_ITERATORS=1",
             "VTK_LEGACY_REMOVE=1",
+            "VTK_USE_FUTURE_BOOL=1",
             "VTK_USE_FUTURE_CONST=1",
             "VTK_WARN_ON_DISPATCH_FAILURE=1",
         ],
@@ -182,21 +186,21 @@ MODULE_SETTINGS = {
             "VTK_BUILD_SHARED_LIBS",
             "VTK_DEBUG_LEAKS",
             "VTK_DEBUG_RANGE_ITERATORS",
+            "VTK_DISPATCH_AFFINE_ARRAYS",
+            "VTK_DISPATCH_CONSTANT_ARRAYS",
+            "VTK_DISPATCH_STD_FUNCTION_ARRAYS",
+            "VTK_DISPATCH_STRUCTURED_POINT_ARRAYS",
             "VTK_LEGACY_SILENT",
             "VTK_USE_MEMKIND",
             "VTK_USE_SCALED_SOA_ARRAYS",
         ],
-        # Allow a circular dependency between CommonCore <=> CommonDataModel.
-        # See also patches/common_core_vs_data_model_cycle.patch.
-        "copts_extra": [
-            "-DvtkCommonDataModel_ENABLED",
-        ],
-        "deps_extra": [
-            ":VTK__CommonDataModel_vtkDataObject",
-        ],
     },
     "VTK::CommonDataModel": {
         "visibility": ["//visibility:public"],
+        "included_cxxs": [
+            "Common/DataModel/vtkHyperTreeGridNonOrientedMooreSuperCursorData.inl",  # noqa
+            "Common/DataModel/vtkHyperTreeGridNonOrientedVonNeumannSuperCursorData.inl",  # noqa
+        ],
     },
     "VTK::CommonExecutionModel": {
         "visibility": ["//visibility:public"],
@@ -272,6 +276,9 @@ MODULE_SETTINGS = {
             "Filters/General/vtkTransformPolyDataFilter.cxx",
             "Filters/General/vtkVertexGlyphFilter.cxx",
         ],
+        "module_deps_ignore": [
+            "VTK::FiltersVerdict",
+        ],
     },
     "VTK::FiltersGeometry": {
         # This module has a lot of code we don't need. We'll opt-out of the
@@ -293,7 +300,8 @@ MODULE_SETTINGS = {
             "Filters/Hybrid/vtkWeightedTransformFilter.cxx",
         ],
         "included_cxxs": [
-            "Filters/Hybrid/vtkEarthSourceData.cxx",
+            "Filters/Hybrid/vtkEarthSource.cxx",
+            "Filters/Hybrid/vtkEarthSourceData.inl",
         ],
         "module_deps_ignore": [
             "VTK::ImagingSources",
@@ -305,12 +313,13 @@ MODULE_SETTINGS = {
             # Avoid the use of VTK::CommonComputationalGeometry.
             "**/vtkPartitionedDataSetCollectionSource.cxx",
             "**/vtkPartitionedDataSetSource.cxx",
+            # Avoid some VTK::FiltersGeneral stuff we don't need.
+            "**/vtkSpatioTemporalHarmonicsSource.cxx",
         ],
     },
     "VTK::IOCore": {
         "srcs_glob_exclude": [
             # Skip code we don't need.
-            "**/*Codec*",
             "**/*Glob*",
             "**/*Particle*",
             "**/*Java*",
@@ -319,10 +328,13 @@ MODULE_SETTINGS = {
             "**/*LZ4*",
             # Skip this to avoid a dependency on lzma.
             "**/*LZMA*",
+            # Skip this to avoid a dependency on utf8.
+            "**/*Codec*",
         ],
         "module_deps_ignore": [
             "VTK::lz4",
             "VTK::lzma",
+            "VTK::utf8",
         ],
     },
     "VTK::IOExport": {
@@ -345,6 +357,7 @@ MODULE_SETTINGS = {
             "VTK::RenderingFreeType",
             "VTK::RenderingVtkJS",
             "VTK::libharu",
+            "VTK::utf8",
         ],
     },
     "VTK::IOGeometry": {
@@ -362,6 +375,9 @@ MODULE_SETTINGS = {
             "IO/Geometry/vtkOBJWriter.cxx",
             "IO/Geometry/vtkSTLReader.cxx",
         ],
+        "module_deps_ignore": [
+            "VTK::FiltersVerdict",
+        ],
     },
     "VTK::IOImage": {
         "visibility": ["//visibility:public"],
@@ -369,7 +385,9 @@ MODULE_SETTINGS = {
         # default srcs glob, and instead just specify what Drake needs.
         "srcs_glob_exclude": ["**"],
         "srcs_extra": [
+            "IO/Image/vtkHDRReader.cxx",
             "IO/Image/vtkImageExport.cxx",
+            "IO/Image/vtkImageReader.cxx",
             "IO/Image/vtkImageReader2.cxx",
             "IO/Image/vtkImageReader2Collection.cxx",
             "IO/Image/vtkImageReader2Factory.cxx",
@@ -524,10 +542,7 @@ MODULE_SETTINGS = {
             "ThirdParty/jpeg/vtkjpeg/**",
         ],
         "deps_extra": [
-            # TODO(jwnimmer-tri) VTK is the only user of this library.
-            # We should write our own WORKSPACE rule to build it sensibly,
-            # or switch to VTK's vendored version.
-            "@libjpeg",
+            "@libjpeg_turbo_internal//:jpeg",
         ],
     },
     "VTK::nlohmannjson": {
@@ -548,10 +563,7 @@ MODULE_SETTINGS = {
             "VTK_MODULE_USE_EXTERNAL_vtkpng=1",
         ],
         "deps_extra": [
-            # TODO(jwnimmer-tri) VTK is the only user of this library.
-            # We should write our own WORKSPACE rule to build it sensibly,
-            # or switch to VTK's vendored version.
-            "@libpng",
+            "@libpng_internal//:libpng",
         ],
     },
     "VTK::tiff": {
@@ -559,10 +571,7 @@ MODULE_SETTINGS = {
             "VTK_MODULE_USE_EXTERNAL_vtktiff=1",
         ],
         "deps_extra": [
-            # TODO(jwnimmer-tri) VTK is the only user of this library.
-            # We should write our own WORKSPACE rule to build it sensibly,
-            # or switch to VTK's vendored version.
-            "@libtiff",
+            "@libtiff_internal//:libtiff",
         ],
     },
     "VTK::zlib": {
@@ -592,6 +601,11 @@ MODULE_SETTINGS = {
         },
         "srcs_glob_extra": [
             "ThirdParty/doubleconversion/**/*.cc",
+        ],
+    },
+    "VTK::fast_float": {
+        "cmake_undefines": [
+            "VTK_MODULE_USE_EXTERNAL_vtkfast_float",
         ],
     },
     "VTK::glew": {
@@ -637,9 +651,41 @@ MODULE_SETTINGS = {
             "ThirdParty/pugixml/**/*.cpp",
         ],
     },
-    "VTK::utf8": {
-        "cmake_undefines": [
-            "VTK_MODULE_USE_EXTERNAL_vtkutf8",
+    "VTK::token": {
+        "hdrs_glob_exclude": [
+            # We use `hdrs_content` instead of a full-blown configure file.
+            "**/Options.h.in",
+            "**/CxxABIConfigure.h.in",
+        ],
+        "hdrs_content": {
+            "ThirdParty/token/vtktoken/token/CxxABIConfigure.h": """
+#pragma once
+#define token_HAS_CXXABI_DEMANGLE
+#include <cxxabi.h>
+""",
+            "ThirdParty/token/vtktoken/token/Exports.h": """
+#pragma once
+#define TOKEN_EXPORT
+#define TOKEN_NO_EXPORT
+#define TOKEN_DEPRECATED
+#define TOKEN_DEPRECATED_EXPORT
+#define TOKEN_DEPRECATED_NO_EXPORT
+            """,
+            "ThirdParty/token/vtktoken/token/Options.h": """
+#pragma once
+#define token_NAMESPACE vtktoken
+#define token_BEGIN_NAMESPACE namespace vtktoken \
+  __attribute__ ((visibility (\"hidden\"))) {
+#define token_CLOSE_NAMESPACE }
+            """,
+        },
+        "strip_include_prefix_extra": "/vtktoken",
+        "srcs_glob_extra": [
+            "ThirdParty/token/vtktoken/token/*.cxx",
+        ],
+        "srcs_glob_exclude": [
+            # Don't link the main() program.
+            "**/tokenize.cxx",
         ],
     },
 }

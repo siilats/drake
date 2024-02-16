@@ -107,7 +107,8 @@ class MultibodyPlantTester {
   /* Adds the given geometry `id` to the given `body` as one of its collision
    geometries. */
   template <typename T>
-  static void AddCollisionGeometryToBody(GeometryId id, const Body<T>& body,
+  static void AddCollisionGeometryToBody(GeometryId id,
+                                         const RigidBody<T>& body,
                                          MultibodyPlant<T>* plant) {
     DRAKE_DEMAND(body.index() < plant->num_bodies());
     plant->collision_geometries_[body.index()].push_back(id);
@@ -271,15 +272,14 @@ class ContactResultsToLcmTest : public ::testing::Test {
    @param ref_name      A reference FullBodyName which has already defined
                         .geometry_count and .body_name_is_unique.
    @pre `model_index` is a valid model instance index. */
-  void AddBody(const std::string& body_name,
-                     ModelInstanceIndex model_index,
-                     const function<string(GeometryId)>& namer,
-                     MultibodyPlant<T>* plant, vector<string>* body_names,
-                     unordered_map<GeometryId, FullBodyName>* id_to_body,
-                     FullBodyName ref_name) {
+  void AddBody(const std::string& body_name, ModelInstanceIndex model_index,
+               const function<string(GeometryId)>& namer,
+               MultibodyPlant<T>* plant, vector<string>* body_names,
+               unordered_map<GeometryId, FullBodyName>* id_to_body,
+               FullBodyName ref_name) {
     // To avoid unnecessary warnings/errors, use a non-zero spatial inertia.
-    const auto& body = plant->AddRigidBody(body_name, model_index,
-        SpatialInertia<double>::MakeUnitary());
+    const auto& body = plant->AddRigidBody(
+        body_name, model_index, SpatialInertia<double>::MakeUnitary());
     /* The expected format based on knowledge of the ContactResultToLcmSystem's
      implementation. */
     body_names->push_back(fmt::format("{}({})", body_name, model_index));
@@ -579,17 +579,15 @@ TYPED_TEST(ContactResultsToLcmTest, PointPairContactOnly) {
     EXPECT_EQ(pair_message.timestamp, kTimeMicroSec);
     EXPECT_EQ(pair_message.body1_name, body_names[pair_data.bodyA_index()]);
     EXPECT_EQ(pair_message.body2_name, body_names[pair_data.bodyB_index()]);
-    // clang-format off
-    EXPECT_TRUE(CompareMatrices(
-        Vector3<double>(pair_message.contact_point),
+    EXPECT_TRUE(CompareMatrices(  // BR
+        EigenMapView(pair_message.contact_point),
         ExtractDoubleOrThrow(pair_data.contact_point())));
-    EXPECT_TRUE(CompareMatrices(
-        Vector3<double>(pair_message.contact_force),
+    EXPECT_TRUE(CompareMatrices(  // BR
+        EigenMapView(pair_message.contact_force),
         ExtractDoubleOrThrow(pair_data.contact_force())));
     EXPECT_TRUE(CompareMatrices(
-        Vector3<double>(pair_message.normal),
+        EigenMapView(pair_message.normal),
         ExtractDoubleOrThrow(pair_data.point_pair().nhat_BA_W)));
-    // clang-format on
     /* None of the rest of the pair data makes it to the message. */
   };
 
@@ -666,17 +664,15 @@ TYPED_TEST(ContactResultsToLcmTest, HydroContactOnly) {
     EXPECT_EQ(pair_message.collision_count2, name2.geometry_count);
 
     /* Mesh aggregate results: centroid, force, moment. */
-    // clang-format off
-    EXPECT_TRUE(CompareMatrices(
-        Vector3<double>(pair_message.centroid_W),
+    EXPECT_TRUE(CompareMatrices(  // BR
+        EigenMapView(pair_message.centroid_W),
         ExtractDoubleOrThrow(mesh.centroid())));
     EXPECT_TRUE(CompareMatrices(
-        Vector3<double>(pair_message.force_C_W),
+        EigenMapView(pair_message.force_C_W),
         ExtractDoubleOrThrow(pair_data.F_Ac_W().translational())));
-    EXPECT_TRUE(CompareMatrices(
-        Vector3<double>(pair_message.moment_C_W),
+    EXPECT_TRUE(CompareMatrices(  // BR
+        EigenMapView(pair_message.moment_C_W),
         ExtractDoubleOrThrow(pair_data.F_Ac_W().rotational())));
-    // clang-format on
 
     /* Compare meshes and pressure fields. */
 
@@ -714,17 +710,15 @@ TYPED_TEST(ContactResultsToLcmTest, HydroContactOnly) {
     EXPECT_EQ(pair_message.num_quadrature_points,
               mesh.num_triangles() * kNumPointPerTri);
     for (int q = 0; q < static_cast<int>(data_quads.size()); ++q) {
-      // clang-format off
-      EXPECT_TRUE(CompareMatrices(
-        Vector3<double>(message_quads[q].p_WQ),
-        ExtractDoubleOrThrow(data_quads[q].p_WQ)));
-      EXPECT_TRUE(CompareMatrices(
-        Vector3<double>(message_quads[q].vt_BqAq_W),
-        ExtractDoubleOrThrow(data_quads[q].vt_BqAq_W)));
-      EXPECT_TRUE(CompareMatrices(
-        Vector3<double>(message_quads[q].traction_Aq_W),
-        ExtractDoubleOrThrow(data_quads[q].traction_Aq_W)));
-      // clang-format on
+      EXPECT_TRUE(CompareMatrices(  // BR
+          EigenMapView(message_quads[q].p_WQ),
+          ExtractDoubleOrThrow(data_quads[q].p_WQ)));
+      EXPECT_TRUE(CompareMatrices(  // BR
+          EigenMapView(message_quads[q].vt_BqAq_W),
+          ExtractDoubleOrThrow(data_quads[q].vt_BqAq_W)));
+      EXPECT_TRUE(CompareMatrices(  // BR
+          EigenMapView(message_quads[q].traction_Aq_W),
+          ExtractDoubleOrThrow(data_quads[q].traction_Aq_W)));
     }
   };
 
@@ -851,8 +845,8 @@ class ConnectVisualizerTest : public ::testing::Test {
     scene_graph_ = &system_pair.scene_graph;
 
     // To avoid unnecessary warnings/errors, use a non-zero spatial inertia.
-    const auto& body = plant_->AddRigidBody("link",
-        SpatialInertia<double>::MakeUnitary());
+    const auto& body =
+        plant_->AddRigidBody("link", SpatialInertia<double>::MakeUnitary());
     plant_->RegisterCollisionGeometry(body, {}, Sphere(1.0), kGeoName,
                                       CoulombFriction<double>{});
     plant_->Finalize();

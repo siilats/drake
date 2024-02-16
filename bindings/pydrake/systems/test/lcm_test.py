@@ -4,7 +4,6 @@ Test bindings of LCM integration with the Systems framework.
 import pydrake.systems.lcm as mut
 
 import collections
-from multiprocessing import Process
 import time
 import unittest
 
@@ -112,6 +111,7 @@ class TestSystemsLcm(unittest.TestCase):
                 use_cpp_serializer=True)
 
     def test_buses(self):
+        self.assertIsInstance(mut.LcmBuses.kLcmUrlMemqNull, str)
         dut = mut.LcmBuses()
         dut.Add("default", DrakeLcm())
         self.assertEqual(dut.size(), 1)
@@ -119,13 +119,17 @@ class TestSystemsLcm(unittest.TestCase):
         self.assertEqual(len(dut.GetAllBusNames()), 1)
 
     def test_bus_config(self):
-        bus_config = {"foo": DrakeLcmParams(), "bar": DrakeLcmParams()}
+        bus_config = {
+            "foo": DrakeLcmParams(),
+            "bar": DrakeLcmParams(),
+            "quux": None,
+        }
         bus_config["foo"].lcm_url = "memq://1"
         bus_config["bar"].lcm_url = "memq://2"
 
         builder = DiagramBuilder()
         buses = mut.ApplyLcmBusConfig(bus_config, builder)
-        self.assertEqual(buses.size(), 2)
+        self.assertEqual(buses.size(), 3)
         self.assertIsInstance(buses.Find("Config test", "foo"),
                               mut.LcmInterfaceSystem)
 

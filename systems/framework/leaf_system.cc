@@ -397,30 +397,6 @@ void LeafSystem<T>::DoCalcNextUpdateTime(
   }
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-template <typename T>
-void LeafSystem<T>::GetGraphvizInputPortToken(
-    const InputPort<T>& port, int max_depth, std::stringstream* dot) const {
-  unused(max_depth);
-  DRAKE_DEMAND(&port.get_system() == this);
-  // N.B. Calling GetGraphvizId() will print the deprecation console warning.
-  *dot << this->GetGraphvizId() << ":u" << port.get_index();
-}
-#pragma GCC diagnostic pop
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-template <typename T>
-void LeafSystem<T>::GetGraphvizOutputPortToken(
-    const OutputPort<T>& port, int max_depth, std::stringstream* dot) const {
-  unused(max_depth);
-  DRAKE_DEMAND(&port.get_system() == this);
-  // N.B. Calling GetGraphvizId() will print the deprecation console warning.
-  *dot << this->GetGraphvizId() << ":y" << port.get_index();
-}
-#pragma GCC diagnostic pop
-
 template <typename T>
 std::unique_ptr<ContinuousState<T>> LeafSystem<T>::AllocateContinuousState()
     const {
@@ -489,24 +465,6 @@ int LeafSystem<T>::DeclareAbstractParameter(const AbstractValue& model_value) {
   model_abstract_parameters_.AddModel(index, model_value.Clone());
   this->AddAbstractParameter(index);
   return index;
-}
-
-template <typename T>
-void LeafSystem<T>::DeclarePeriodicPublishNoHandler(
-    double period_sec, double offset_sec) {
-  DeclarePeriodicEvent(period_sec, offset_sec, PublishEvent<T>());
-}
-
-template <typename T>
-void LeafSystem<T>::DeclarePeriodicDiscreteUpdateNoHandler(
-    double period_sec, double offset_sec) {
-  DeclarePeriodicEvent(period_sec, offset_sec, DiscreteUpdateEvent<T>());
-}
-
-template <typename T>
-void LeafSystem<T>::DeclarePeriodicUnrestrictedUpdateNoHandler(
-    double period_sec, double offset_sec) {
-  DeclarePeriodicEvent(period_sec, offset_sec, UnrestrictedUpdateEvent<T>());
 }
 
 template <typename T>
@@ -764,35 +722,6 @@ SystemConstraintIndex LeafSystem<T>::DeclareInequalityConstraint(
 }
 
 template <typename T>
-void LeafSystem<T>::DoPublish(
-    const Context<T>& context,
-    const std::vector<const PublishEvent<T>*>& events) const {
-  for (const PublishEvent<T>* event : events) {
-    event->handle(*this, context);
-  }
-}
-
-template <typename T>
-void LeafSystem<T>::DoCalcDiscreteVariableUpdates(
-    const Context<T>& context,
-    const std::vector<const DiscreteUpdateEvent<T>*>& events,
-    DiscreteValues<T>* discrete_state) const {
-  for (const DiscreteUpdateEvent<T>* event : events) {
-    event->handle(*this, context, discrete_state);
-  }
-}
-
-template <typename T>
-void LeafSystem<T>::DoCalcUnrestrictedUpdate(
-    const Context<T>& context,
-    const std::vector<const UnrestrictedUpdateEvent<T>*>& events,
-    State<T>* state) const {
-  for (const UnrestrictedUpdateEvent<T>* event : events) {
-    event->handle(*this, context, state);
-  }
-}
-
-template <typename T>
 std::unique_ptr<AbstractValue> LeafSystem<T>::DoAllocateInput(
     const InputPort<T>& input_port) const {
   std::unique_ptr<AbstractValue> model_result =
@@ -839,31 +768,47 @@ LeafSystem<T>::DoMapPeriodicEventsByTiming(const Context<T>&) const {
 }
 
 template <typename T>
-void LeafSystem<T>::DispatchPublishHandler(
+EventStatus LeafSystem<T>::DispatchPublishHandler(
     const Context<T>& context,
     const EventCollection<PublishEvent<T>>& events) const {
   const LeafEventCollection<PublishEvent<T>>& leaf_events =
      dynamic_cast<const LeafEventCollection<PublishEvent<T>>&>(events);
-  // Only call DoPublish if there are publish events.
+  // This function shouldn't have been called if no publish events.
   DRAKE_DEMAND(leaf_events.HasEvents());
-  this->DoPublish(context, leaf_events.get_events());
+
+  EventStatus overall_status = EventStatus::DidNothing();
+  for (const PublishEvent<T>* event : leaf_events.get_events()) {
+    const EventStatus per_event_status = event->handle(*this, context);
+    overall_status.KeepMoreSevere(per_event_status);
+    // Unlike the discrete & unrestricted event policy, we don't stop handling
+    // publish events when one fails; we just report the first failure after all
+    // the publishes are done.
+  }
+  return overall_status;
 }
 
 template <typename T>
-void LeafSystem<T>::DispatchDiscreteVariableUpdateHandler(
+EventStatus LeafSystem<T>::DispatchDiscreteVariableUpdateHandler(
     const Context<T>& context,
     const EventCollection<DiscreteUpdateEvent<T>>& events,
     DiscreteValues<T>* discrete_state) const {
   const LeafEventCollection<DiscreteUpdateEvent<T>>& leaf_events =
       dynamic_cast<const LeafEventCollection<DiscreteUpdateEvent<T>>&>(
           events);
+  // This function shouldn't have been called if no discrete update events.
   DRAKE_DEMAND(leaf_events.HasEvents());
 
-  // Must initialize the output argument with the current contents of the
-  // discrete state.
+  // Must initialize the output argument with current discrete state contents.
   discrete_state->SetFrom(context.get_discrete_state());
-  this->DoCalcDiscreteVariableUpdates(context, leaf_events.get_events(),
-      discrete_state);  // in/out
+
+  EventStatus overall_status = EventStatus::DidNothing();
+  for (const DiscreteUpdateEvent<T>* event : leaf_events.get_events()) {
+    const EventStatus per_event_status =
+        event->handle(*this, context, discrete_state);
+    overall_status.KeepMoreSevere(per_event_status);
+    if (overall_status.failed()) break;  // Stop at the first disaster.
+  }
+  return overall_status;
 }
 
 template <typename T>
@@ -879,20 +824,29 @@ void LeafSystem<T>::DoApplyDiscreteVariableUpdate(
 }
 
 template <typename T>
-void LeafSystem<T>::DispatchUnrestrictedUpdateHandler(
+EventStatus LeafSystem<T>::DispatchUnrestrictedUpdateHandler(
     const Context<T>& context,
     const EventCollection<UnrestrictedUpdateEvent<T>>& events,
     State<T>* state) const {
   const LeafEventCollection<UnrestrictedUpdateEvent<T>>& leaf_events =
       dynamic_cast<const LeafEventCollection<UnrestrictedUpdateEvent<T>>&>(
           events);
+  // This function shouldn't have been called if no unrestricted update events.
   DRAKE_DEMAND(leaf_events.HasEvents());
 
-  // Must initialize the output argument with the current contents of the
-  // state.
+  // Must initialize the output argument with current state contents.
+  // TODO(sherm1) Shouldn't require preloading of the output state; better to
+  //  note just the changes since usually only a small subset will be changed by
+  //  the callback function.
   state->SetFrom(context.get_state());
-  this->DoCalcUnrestrictedUpdate(context, leaf_events.get_events(),
-      state);  // in/out
+
+  EventStatus overall_status = EventStatus::DidNothing();
+  for (const UnrestrictedUpdateEvent<T>* event : leaf_events.get_events()) {
+    const EventStatus per_event_status = event->handle(*this, context, state);
+    overall_status.KeepMoreSevere(per_event_status);
+    if (overall_status.failed()) break;  // Stop at the first disaster.
+  }
+  return overall_status;
 }
 
 template <typename T>

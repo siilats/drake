@@ -17,15 +17,16 @@ drake_cc_package_library(
         ":calc_distance_and_time_derivative",
         ":constraint_specs",
         ":contact_jacobians",
-        ":contact_pair_kinematics",
         ":contact_properties",
         ":contact_results",
         ":coulomb_friction",
+        ":deformable_contact_info",
         ":deformable_ids",
         ":discrete_contact_data",
         ":discrete_contact_pair",
         ":externally_applied_spatial_force",
         ":externally_applied_spatial_force_multiplexer",
+        ":force_density_field",
         ":hydroelastic_contact_info",
         ":hydroelastic_quadrature_point_data",
         ":hydroelastic_traction",
@@ -68,6 +69,9 @@ drake_cc_library(
     deps = [
         "//common:essential",
         "//geometry:geometry_ids",
+        "//math:geometric_transform",
+        "//multibody/contact_solvers:matrix_block",
+        "//multibody/tree:multibody_tree_indexes",
     ],
 )
 
@@ -125,7 +129,6 @@ drake_cc_library(
     deps = [
         ":constraint_specs",
         ":contact_jacobians",
-        ":contact_pair_kinematics",
         ":contact_properties",
         ":contact_results",
         ":coulomb_friction",
@@ -182,23 +185,6 @@ drake_cc_library(
 )
 
 drake_cc_library(
-    name = "contact_pair_kinematics",
-    srcs = [
-        "contact_pair_kinematics.cc",
-    ],
-    hdrs = [
-        "contact_pair_kinematics.h",
-    ],
-    deps = [
-        "//common:default_scalars",
-        "//math:geometric_transform",
-        "//multibody/contact_solvers:contact_configuration",
-        "//multibody/contact_solvers:matrix_block",
-        "//multibody/tree:multibody_tree_indexes",
-    ],
-)
-
-drake_cc_library(
     name = "contact_jacobians",
     srcs = [
         "contact_jacobians.cc",
@@ -209,6 +195,23 @@ drake_cc_library(
     deps = [
         "//common:default_scalars",
         "//math:geometric_transform",
+    ],
+)
+
+drake_cc_library(
+    name = "deformable_contact_info",
+    srcs = [
+        "deformable_contact_info.cc",
+    ],
+    hdrs = [
+        "deformable_contact_info.h",
+    ],
+    deps = [
+        ":hydroelastic_quadrature_point_data",
+        "//common:default_scalars",
+        "//geometry:geometry_ids",
+        "//geometry/proximity:polygon_surface_mesh",
+        "//multibody/math",
     ],
 )
 
@@ -248,6 +251,7 @@ drake_cc_library(
         "contact_results.h",
     ],
     deps = [
+        ":deformable_contact_info",
         ":hydroelastic_contact_info",
         ":point_pair_contact_info",
         "//common:default_scalars",
@@ -276,6 +280,22 @@ drake_cc_library(
         "//lcmtypes:point_pair_contact_info_for_viz",
         "//systems/framework:diagram_builder",
         "//systems/lcm:lcm_pubsub_system",
+    ],
+)
+
+drake_cc_library(
+    name = "force_density_field",
+    srcs = [
+        "force_density_field.cc",
+    ],
+    hdrs = [
+        "force_density_field.h",
+    ],
+    deps = [
+        "//common:default_scalars",
+        "//common:essential",
+        "//multibody/tree",
+        "//systems/framework:context",
     ],
 )
 
@@ -456,6 +476,7 @@ drake_cc_googletest(
         "//manipulation/models/iiwa_description:models",
         "//manipulation/models/wsg_50_description:models",
         "//multibody:models",
+        "//multibody/benchmarks/acrobot:models",
     ],
     deps = [
         ":plant",
@@ -496,6 +517,16 @@ drake_cc_googletest(
         ":compliant_contact_manager_tester",
         ":plant",
         ":spheres_stack",
+        "//common/test_utilities:eigen_matrix_compare",
+        "//common/test_utilities:expect_throws_message",
+    ],
+)
+
+drake_cc_googletest(
+    name = "sap_driver_contact_constraints_test",
+    deps = [
+        ":compliant_contact_manager_tester",
+        ":plant",
         "//common/test_utilities:eigen_matrix_compare",
         "//common/test_utilities:expect_throws_message",
     ],
@@ -840,6 +871,7 @@ drake_cc_googletest(
         "//common/test_utilities:eigen_matrix_compare",
         "//common/test_utilities:expect_throws_message",
         "//geometry:drake_visualizer",
+        "//lcm",
         "//math:geometric_transform",
         "//multibody/plant:contact_results_to_lcm",
         "//systems/analysis:implicit_euler_integrator",
@@ -950,6 +982,14 @@ drake_cc_googletest(
         ":multibody_plant_core",
         "//geometry:scene_graph",
         "//systems/framework:diagram_builder",
+    ],
+)
+
+drake_cc_googletest(
+    name = "deformable_contact_info_test",
+    deps = [
+        ":deformable_contact_info",
+        "//common:essential",
     ],
 )
 
@@ -1239,4 +1279,4 @@ drake_cc_googletest(
     ],
 )
 
-add_lint_tests(enable_clang_format_lint = False)
+add_lint_tests()

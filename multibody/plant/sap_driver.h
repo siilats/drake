@@ -13,7 +13,7 @@
 #include "drake/multibody/contact_solvers/sap/sap_contact_problem.h"
 #include "drake/multibody/contact_solvers/sap/sap_solver.h"
 #include "drake/multibody/contact_solvers/sap/sap_solver_results.h"
-#include "drake/multibody/plant/contact_pair_kinematics.h"
+#include "drake/multibody/plant/discrete_contact_pair.h"
 #include "drake/multibody/tree/multibody_forces.h"
 #include "drake/multibody/tree/multibody_tree_topology.h"
 #include "drake/systems/framework/context.h"
@@ -49,12 +49,15 @@ struct ContactProblemCache {
   }
   copyable_unique_ptr<contact_solvers::internal::SapContactProblem<T>>
       sap_problem;
+  // Start/end constraint index for PD controller constraints in sap_problem.
+  int pd_controller_constraints_start{0};
+  int num_pd_controller_constraints{0};
 
   copyable_unique_ptr<contact_solvers::internal::SapContactProblem<T>>
       sap_problem_locked;
 
   // TODO(amcastro-tri): consider removing R_WC from the contact problem cache
-  // and instead cache ContactPairKinematics separately.
+  // and instead cache DiscreteContactPair separately.
   std::vector<math::RotationMatrix<T>> R_WC;
 
   contact_solvers::internal::ReducedMapping mapping;
@@ -103,6 +106,12 @@ class SapDriver {
   // forces.
   void CalcDiscreteUpdateMultibodyForces(const systems::Context<T>& context,
                                          MultibodyForces<T>* forces) const;
+
+  // Computes the actuation applied to the multibody system when stepping the
+  // discrete dynamics from the state stored in `context`. This includes the
+  // actuation from implicit PD controllers.
+  void CalcActuation(const systems::Context<T>& context,
+                     VectorX<T>* actuation) const;
 
  private:
   // Provide private access for unit testing only.

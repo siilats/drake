@@ -6,6 +6,7 @@
 #include <fmt/format.h>
 
 #include "drake/common/extract_double.h"
+#include "drake/geometry/meshcat_graphviz.h"
 #include "drake/math/rigid_transform.h"
 #include "drake/multibody/meshcat/hydroelastic_contact_visualizer.h"
 #include "drake/multibody/meshcat/point_contact_visualizer.h"
@@ -242,9 +243,7 @@ void ContactVisualizer<T>::CalcHydroelasticContacts(
 
       const std::vector<T>& field_pressures =
           contact_surface.tri_e_MN().values();
-      const VectorX<T> pressure_T =
-          Eigen::Map<const VectorX<T>, Eigen::Unaligned>(
-              field_pressures.data(), field_pressures.size());
+      const VectorX<T> pressure_T = EigenMapView(field_pressures);
       const Eigen::VectorXd pressure = ExtractDoubleOrThrow(pressure_T);
       result->emplace_back(std::move(body_A), std::move(body_B), centroid_W,
                            force_C_W, moment_C_W, vertices, faces, pressure);
@@ -274,9 +273,7 @@ void ContactVisualizer<T>::CalcHydroelasticContacts(
 
       const std::vector<T>& field_pressures =
           contact_surface.poly_e_MN().values();
-      const VectorX<T> pressure_T =
-          Eigen::Map<const VectorX<T>, Eigen::Unaligned>(
-              field_pressures.data(), field_pressures.size());
+      const VectorX<T> pressure_T = EigenMapView(field_pressures);
       const Eigen::VectorXd pressure = ExtractDoubleOrThrow(pressure_T);
 
       result->emplace_back(std::move(body_A), std::move(body_B), centroid_W,
@@ -322,6 +319,18 @@ template <typename T>
 EventStatus ContactVisualizer<T>::OnInitialization(const Context<T>&) const {
   Delete();
   return EventStatus::Succeeded();
+}
+
+template <typename T>
+typename systems::LeafSystem<T>::GraphvizFragment
+ContactVisualizer<T>::DoGetGraphvizFragment(
+    const typename systems::LeafSystem<T>::GraphvizFragmentParams& params)
+    const {
+  geometry::internal::MeshcatGraphviz meshcat_graphviz(params_.prefix,
+                                                       /* subscribe = */ false);
+  return meshcat_graphviz.DecorateResult(
+      systems::LeafSystem<T>::DoGetGraphvizFragment(
+          meshcat_graphviz.DecorateParams(params)));
 }
 
 }  // namespace meshcat

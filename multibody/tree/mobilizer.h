@@ -7,7 +7,6 @@
 #include "drake/common/autodiff.h"
 #include "drake/common/drake_assert.h"
 #include "drake/common/drake_copyable.h"
-#include "drake/common/drake_deprecated.h"
 #include "drake/common/random.h"
 #include "drake/multibody/math/spatial_algebra.h"
 #include "drake/multibody/tree/frame.h"
@@ -19,7 +18,7 @@ namespace drake {
 namespace multibody {
 
 // Forward declarations.
-template<typename T> class Body;
+template<typename T> class RigidBody;
 
 namespace internal {
 
@@ -35,8 +34,8 @@ template<typename T> class BodyNode;
 // @code
 // MultibodyTree<double> model;
 // // ... Code here to setup quantities below as mass, com, X_BP, etc. ...
-// const Body<double>& pendulum =
-//   model.AddBody<RigidBody>(SpatialInertia<double>(mass, com, unit_inertia));
+// const RigidBody<double>& pendulum =
+//   model.AddRigidBody(SpatialInertia<double>(mass, com, unit_inertia));
 // // We will connect the pendulum body to the world frame using a
 // // RevoluteMobilizer. To do so we define a pin frame P rigidly attached to
 // // the pendulum body.
@@ -315,13 +314,13 @@ class Mobilizer : public MultibodyElement<T> {
 
   // Returns a constant reference to the body associated with `this`
   // mobilizer's inboard frame.
-  const Body<T>& inboard_body() const {
+  const RigidBody<T>& inboard_body() const {
     return inboard_frame().body();
   }
 
   // Returns a constant reference to the body associated with `this`
   // mobilizer's outboard frame.
-  const Body<T>& outboard_body() const {
+  const RigidBody<T>& outboard_body() const {
     return outboard_frame().body();
   }
 
@@ -638,7 +637,7 @@ class Mobilizer : public MultibodyElement<T> {
   // For MultibodyTree internal use only.
   virtual std::unique_ptr<internal::BodyNode<T>> CreateBodyNode(
       const internal::BodyNode<T>* parent_node,
-      const Body<T>* body, const Mobilizer<T>* mobilizer) const = 0;
+      const RigidBody<T>* body, const Mobilizer<T>* mobilizer) const = 0;
 
   // Lock the mobilizer. Its generalized velocities will be 0 until it is
   // unlocked.
@@ -704,12 +703,16 @@ class Mobilizer : public MultibodyElement<T> {
 
   // Implementation for MultibodyElement::DoDeclareParameters().
   void DoDeclareParameters(
-      internal::MultibodyTreeSystem<T>* tree_system) override {
-    // Declare parent class's parameters
-    MultibodyElement<T>::DoDeclareParameters(tree_system);
-
+      internal::MultibodyTreeSystem<T>* tree_system) final {
     is_locked_parameter_index_ =
         this->DeclareAbstractParameter(tree_system, Value<bool>(false));
+  }
+
+  // Implementation for MultibodyElement::DoDeclareParameters().
+  void DoSetDefaultParameters(systems::Parameters<T>* parameters) const final {
+    // TODO(joemasterjonh): Consider exposing a default locked model value.
+    parameters->template get_mutable_abstract_parameter<bool>(
+        is_locked_parameter_index_) = false;
   }
 
  private:

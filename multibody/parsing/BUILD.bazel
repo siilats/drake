@@ -85,8 +85,8 @@ drake_cc_library(
         "//common:find_runfiles",
         "//common:network_policy",
         "//common:scope_exit",
+        "//common:sha256",
         "//common/yaml",
-        "@picosha2_internal//:picosha2",
         "@tinyxml2_internal//:tinyxml2",
     ],
 )
@@ -109,6 +109,7 @@ drake_cc_library(
         "detail_common.h",
         "detail_ignition.h",
         "detail_path_utils.h",
+        "detail_strongly_connected_components.h",
         "detail_tinyxml.h",
         "detail_tinyxml2_diagnostic.h",
     ],
@@ -456,11 +457,13 @@ drake_cc_googletest(
     name = "process_model_directives_test",
     data = [
         ":process_model_directives_test_models",
+        "//manipulation/util:panda_arm_and_hand_test_model",
         "//multibody/benchmarks/acrobot:models",
     ],
     deps = [
         ":process_model_directives",
         "//common/test_utilities",
+        "//common/yaml",
     ],
 )
 
@@ -529,6 +532,7 @@ drake_cc_googletest(
         "//multibody/benchmarks/acrobot:models",
     ],
     deps = [
+        ":detail_mujoco_parser",
         ":detail_sdf_parser",
         "//common:find_resource",
         "//common/test_utilities",
@@ -565,6 +569,9 @@ drake_cc_googletest(
         "//common/test_utilities:diagnostic_policy_test_base",
         "//common/test_utilities:eigen_matrix_compare",
         "//common/test_utilities:expect_throws_message",
+        "//common/test_utilities:maybe_pause_for_user",
+        "//geometry/test_utilities:meshcat_environment",
+        "//visualization",
     ],
 )
 
@@ -636,8 +643,8 @@ drake_cc_googletest(
         "//common:find_cache",
         "//common:find_resource",
         "//common:scope_exit",
+        "//common:sha256",
         "//common/test_utilities:expect_throws_message",
-        "@picosha2_internal//:picosha2",
     ],
 )
 
@@ -661,6 +668,13 @@ drake_cc_googletest(
     deps = [
         ":detail_misc",
         "//common/test_utilities",
+    ],
+)
+
+drake_cc_googletest(
+    name = "detail_strongly_connected_components_test",
+    deps = [
+        ":detail_misc",
     ],
 )
 

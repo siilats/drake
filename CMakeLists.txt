@@ -92,10 +92,10 @@ else()
 
   # The supported releases should match those listed in both
   # doc/_pages/from_source.md and tools/workspace/os.bzl.
-  if(NOT UNIX_DISTRIBUTION_CODENAME MATCHES "^(focal|jammy)$")
+  if(NOT UNIX_DISTRIBUTION_CODENAME MATCHES "^(focal|jammy|noble)$")
     message(FATAL_ERROR
       "Release ${UNIX_DISTRIBUTION_CODENAME} is NOT supported. Please use "
-      "Ubuntu 20.04 (Focal) or Ubuntu 22.04 (Jammy)."
+      "Ubuntu 20.04 (Focal) or Ubuntu 22.04 (Jammy) or Ubuntu 24.04 (Noble)."
     )
   endif()
 
@@ -106,7 +106,7 @@ endif()
 
 # The version passed to find_package(Bazel) should match the
 # minimum_bazel_version value in the call to versions.check() in WORKSPACE.
-set(MINIMUM_BAZEL_VERSION 4.0)
+set(MINIMUM_BAZEL_VERSION 5.1)
 find_package(Bazel ${MINIMUM_BAZEL_VERSION} MODULE)
 if(NOT Bazel_FOUND)
   set(Bazel_EXECUTABLE "${PROJECT_SOURCE_DIR}/third_party/com_github_bazelbuild_bazelisk/bazelisk.py")
@@ -220,12 +220,14 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 17)
 
-# The supported Python major/minor versions should match those listed in both
-# doc/_pages/from_source.md and tools/workspace/python/repository.bzl.
+# The supported Python major/minor versions should match those listed in
+# doc/_pages/from_source.md.
 if(APPLE)
   set(SUPPORTED_PYTHON_VERSION 3.11)
 else()
-  if(UNIX_DISTRIBUTION_CODENAME STREQUAL focal)
+  if(UNIX_DISTRIBUTION_CODENAME STREQUAL noble)
+    set(SUPPORTED_PYTHON_VERSION 3.11)
+  elseif(UNIX_DISTRIBUTION_CODENAME STREQUAL focal)
     set(SUPPORTED_PYTHON_VERSION 3.8)
   else()  # UNIX_DISTRIBUTION_CODENAME := jammy
     set(SUPPORTED_PYTHON_VERSION 3.10)
@@ -396,13 +398,6 @@ macro(override_repository NAME)
   list(APPEND BAZEL_WORKSPACE_EXCLUDES "${NAME}")
 endmacro()
 
-# For Python, always override Drake's default with the CMake selection instead.
-generate_external_repository_file(cmake_python/WORKSPACE)
-configure_file(
-  cmake/external/workspace/cmake_python/BUILD.bazel.in
-  external/workspace/cmake_python/BUILD.bazel @ONLY)
-override_repository(cmake_python)
-
 option(WITH_USER_EIGEN "Use user-provided Eigen3" OFF)
 
 if(WITH_USER_EIGEN)
@@ -472,6 +467,12 @@ option(WITH_MOSEK "Build with support for MOSEK" OFF)
 
 if(WITH_MOSEK)
   string(APPEND BAZEL_CONFIG " --config=mosek")
+endif()
+
+option(WITH_OPENMP "Build with support for OpenMP" OFF)
+
+if(WITH_OPENMP)
+  string(APPEND BAZEL_CONFIG " --config=omp")
 endif()
 
 set(WITH_ROBOTLOCOMOTION_SNOPT OFF CACHE BOOL
@@ -544,7 +545,7 @@ if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   )
 endif()
 
-set(BAZEL_INSTALL_ARGS "${CMAKE_INSTALL_PREFIX}")
+set(BAZEL_INSTALL_ARGS "\${CMAKE_INSTALL_PREFIX}")
 
 if(CMAKE_COLOR_MAKEFILE)
   list(INSERT BAZEL_INSTALL_ARGS 0 "--color")
@@ -582,33 +583,12 @@ foreach(import IN LISTS BAZELRC_IMPORTS)
 endforeach()
 
 # We need to run Bazel in a dedicated temporary directory. The particular
-# name `drake_build_cwd` isn't important, it just needs to be unique.
+# name `drake_build_cwd` isn't important, it just needs to be unique. Note,
+# however, that the macOS wheel builds also need to know this path, so if it
+# ever changes, tools/wheel/macos/build-wheel.sh will also need to be updated.
 configure_file(cmake/bazel.rc.in drake_build_cwd/.bazelrc @ONLY)
 configure_file(cmake/WORKSPACE.in drake_build_cwd/WORKSPACE.bazel @ONLY)
 file(CREATE_LINK "${PROJECT_SOURCE_DIR}/.bazeliskrc" drake_build_cwd/.bazeliskrc SYMBOLIC)
-
-include(ExternalProject)
-
-ExternalProject_Add(drake_cxx_python
-  SOURCE_DIR "${PROJECT_SOURCE_DIR}"
-  BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/drake_build_cwd"
-  CONFIGURE_COMMAND
-    "${Bazel_EXECUTABLE}"
-    info --announce_rc
-  BUILD_COMMAND
-    "${Bazel_EXECUTABLE}"
-    build
-    ${BAZEL_INSTALL_TARGET}
-  BUILD_ALWAYS ON
-  INSTALL_COMMAND
-    "${Bazel_EXECUTABLE}"
-    run
-    ${BAZEL_INSTALL_TARGET}
-    --
-    ${BAZEL_INSTALL_ARGS}
-  USES_TERMINAL_BUILD ON
-  USES_TERMINAL_INSTALL ON
-)
 
 set(GIT_DIR "${PROJECT_SOURCE_DIR}/.git")
 set(GIT_REVISION HEAD)
@@ -631,5 +611,26 @@ endif()
 string(TIMESTAMP BUILD_TIMESTAMP "%Y%m%d%H%M%S")
 
 configure_file(tools/install/libdrake/VERSION.TXT.in VERSION.TXT @ONLY)
+
+execute_process(
+  COMMAND "${Bazel_EXECUTABLE}" info --announce_rc
+  WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/drake_build_cwd"
+)
+
+add_custom_target(drake_cxx_python ALL
+  COMMAND "${Bazel_EXECUTABLE}" build ${BAZEL_INSTALL_TARGET}
+  WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/drake_build_cwd"
+  USES_TERMINAL
+)
+
+install(CODE
+  "execute_process(
+    COMMAND
+      \"${Bazel_EXECUTABLE}\" run ${BAZEL_INSTALL_TARGET}
+      -- ${BAZEL_INSTALL_ARGS}
+    WORKING_DIRECTORY \"${CMAKE_CURRENT_BINARY_DIR}/drake_build_cwd\"
+  )"
+  ALL_COMPONENTS
+)
 
 install(FILES "${PROJECT_BINARY_DIR}/VERSION.TXT" DESTINATION share/doc/drake)

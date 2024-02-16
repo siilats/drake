@@ -6,11 +6,15 @@ load("@drake//tools/workspace:github.bzl", "github_archive")
 
 def rules_rust_repository(
         name,
-        mirrors = None):
+        mirrors = None,
+        extra_patches = None):
     github_archive(
         name = name,
         repository = "bazelbuild/rules_rust",  # License: Apache-2.0
-        commit = "0.27.0",
-        sha256 = "d9a3981f4ef18ced850341bc05c7e2a506006a47a0207b6f7191f271cb893233",  # noqa
+        commit = "0.38.0",
+        sha256 = "5873326d431bdd5fc0a3e0be3d060580ea0ea477c62bd64e299be1b0b7eeacf4",  # noqa
+        patches = (extra_patches or []) + [
+            ":patches/license_filegroup.patch",
+        ],
         mirrors = mirrors,
     )

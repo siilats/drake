@@ -35,90 +35,6 @@ namespace drake {
 namespace systems {
 namespace {
 
-// A shell System to test the event dispatchers are sent at least one event upon
-// a forced call.
-class ForcedDispatchOverrideSystem : public LeafSystem<double> {
- public:
-  bool got_publish_event() const { return got_publish_event_; }
-  bool got_discrete_update_event() const {
-    return got_discrete_update_event_;
-  }
-  bool got_unrestricted_update_event() const {
-    return got_unrestricted_update_event_;
-  }
-  TriggerType get_publish_event_trigger_type() const {
-    return publish_event_trigger_type_;
-  }
-  TriggerType get_discrete_update_event_trigger_type() const {
-    return discrete_update_event_trigger_type_;
-  }
-  TriggerType get_unrestricted_update_event_trigger_type() const {
-    return unrestricted_update_event_trigger_type_;
-  }
-
- private:
-  void DoPublish(
-      const Context<double>&,
-      const std::vector<const PublishEvent<double>*>& events) const final {
-    got_publish_event_ = (events.size() == 1);
-    if (got_publish_event_)
-      publish_event_trigger_type_ = events.front()->get_trigger_type();
-  }
-
-  void DoCalcDiscreteVariableUpdates(
-      const Context<double>&,
-      const std::vector<const DiscreteUpdateEvent<double>*>& events,
-      DiscreteValues<double>*) const final {
-    got_discrete_update_event_ = (events.size() == 1);
-    if (got_discrete_update_event_)
-      discrete_update_event_trigger_type_ = events.front()->get_trigger_type();
-  }
-
-  void DoCalcUnrestrictedUpdate(
-      const Context<double>&,
-      const std::vector<const UnrestrictedUpdateEvent<double>*>& events,
-      State<double>*) const final {
-    got_unrestricted_update_event_ = (events.size() == 1);
-    if (got_unrestricted_update_event_) {
-      unrestricted_update_event_trigger_type_ =
-          events.front()->get_trigger_type();
-    }
-  }
-
-  // Variables used to determine whether the handlers have been called with
-  // forced update events. Note: updating method variables in event handlers
-  // is an anti-pattern, but we do it here to simplify test code.
-  mutable bool got_publish_event_{false};
-  mutable bool got_discrete_update_event_{false};
-  mutable bool got_unrestricted_update_event_{false};
-  mutable TriggerType publish_event_trigger_type_{TriggerType::kUnknown};
-  mutable TriggerType discrete_update_event_trigger_type_{
-    TriggerType::kUnknown
-  };
-  mutable TriggerType unrestricted_update_event_trigger_type_{
-    TriggerType::kUnknown
-  };
-};
-
-GTEST_TEST(ForcedDispatchOverrideSystemTest, Dispatchers) {
-  ForcedDispatchOverrideSystem system;
-  auto context = system.CreateDefaultContext();
-  auto discrete_values = system.AllocateDiscreteVariables();
-  EXPECT_EQ(discrete_values->get_system_id(), context->get_system_id());
-  auto state = context->CloneState();
-  system.ForcedPublish(*context);
-  system.CalcForcedDiscreteVariableUpdate(*context, discrete_values.get());
-  system.CalcForcedUnrestrictedUpdate(*context, state.get());
-  ASSERT_TRUE(system.got_publish_event());
-  ASSERT_TRUE(system.got_discrete_update_event());
-  ASSERT_TRUE(system.got_unrestricted_update_event());
-  EXPECT_TRUE(system.get_publish_event_trigger_type() == TriggerType::kForced);
-  EXPECT_TRUE(system.get_discrete_update_event_trigger_type() ==
-      TriggerType::kForced);
-  EXPECT_TRUE(system.get_unrestricted_update_event_trigger_type() ==
-      TriggerType::kForced);
-}
-
 // A shell System to test the default implementations.
 template <typename T>
 class TestSystem : public LeafSystem<T> {
@@ -148,7 +64,8 @@ class TestSystem : public LeafSystem<T> {
   void AddPeriodicUpdate() {
     const double period = 10.0;
     const double offset = 5.0;
-    this->DeclarePeriodicDiscreteUpdateNoHandler(period, offset);
+    this->DeclarePeriodicDiscreteUpdateEvent(
+        period, offset, &TestSystem<T>::NoopDiscreteUpdate);
     std::optional<PeriodicEventData> periodic_attr =
         this->GetUniquePeriodicDiscreteUpdateAttribute();
     ASSERT_TRUE(periodic_attr);
@@ -158,24 +75,41 @@ class TestSystem : public LeafSystem<T> {
 
   void AddPeriodicUpdate(double period) {
     const double offset = 0.0;
-    this->DeclarePeriodicDiscreteUpdateNoHandler(period, offset);
+    this->DeclarePeriodicDiscreteUpdateEvent(
+        period, offset, &TestSystem<T>::NoopDiscreteUpdate);
     std::optional<PeriodicEventData> periodic_attr =
-       this->GetUniquePeriodicDiscreteUpdateAttribute();
+        this->GetUniquePeriodicDiscreteUpdateAttribute();
     ASSERT_TRUE(periodic_attr);
     EXPECT_EQ(periodic_attr.value().period_sec(), period);
     EXPECT_EQ(periodic_attr.value().offset_sec(), offset);
   }
 
   void AddPeriodicUpdate(double period, double offset) {
-    this->DeclarePeriodicDiscreteUpdateNoHandler(period, offset);
+    this->DeclarePeriodicDiscreteUpdateEvent(
+        period, offset, &TestSystem<T>::NoopDiscreteUpdate);
+  }
+
+  EventStatus NoopDiscreteUpdate(const Context<T>&, DiscreteValues<T>*) const {
+    return EventStatus::DidNothing();
   }
 
   void AddPeriodicUnrestrictedUpdate(double period, double offset) {
-    this->DeclarePeriodicUnrestrictedUpdateNoHandler(period, offset);
+    this->DeclarePeriodicUnrestrictedUpdateEvent(
+        period, offset, &TestSystem<T>::NoopUnrestritedUpdate);
+  }
+
+  EventStatus NoopUnrestritedUpdate(const Context<T>&, State<T>*) const {
+    return EventStatus::DidNothing();
   }
 
   void AddPublish(double period) {
-    this->DeclarePeriodicPublishNoHandler(period);
+    const double offset = 0.0;
+    this->DeclarePeriodicPublishEvent(period, offset,
+                                      &TestSystem<T>::NoopPublish);
+  }
+
+  EventStatus NoopPublish(const Context<T>&) const {
+    return EventStatus::DidNothing();
   }
 
   void DoCalcTimeDerivatives(const Context<T>& context,
@@ -1731,9 +1665,9 @@ TEST_F(LeafSystemTest, CallbackAndInvalidUpdates) {
     event.AddToComposite(&leaf_events);
   }
 
-  // Verify no exception is thrown.
-  DRAKE_EXPECT_NO_THROW(system_.CalcUnrestrictedUpdate(
-      *context, leaf_events.get_unrestricted_update_events(), x.get()));
+  const EventStatus status = system_.CalcUnrestrictedUpdate(
+      *context, leaf_events.get_unrestricted_update_events(), x.get());
+  EXPECT_TRUE(status.succeeded());
 
   // Change the function to change the continuous state dimension.
   // Call the unrestricted update function again, now verifying that an
@@ -1754,10 +1688,10 @@ TEST_F(LeafSystemTest, CallbackAndInvalidUpdates) {
 
   // Call the unrestricted update function, verifying that an exception
   // is thrown.
-  EXPECT_THROW(
+  DRAKE_EXPECT_THROWS_MESSAGE(
       system_.CalcUnrestrictedUpdate(
           *context, leaf_events.get_unrestricted_update_events(), x.get()),
-      std::logic_error);
+      ".*dimensions cannot be changed.*");
 
   // Restore the continuous state (size).
   x->set_continuous_state(std::make_unique<ContinuousState<double>>(
@@ -1783,10 +1717,10 @@ TEST_F(LeafSystemTest, CallbackAndInvalidUpdates) {
 
   // Call the unrestricted update function again, again verifying that an
   // exception is thrown.
-  EXPECT_THROW(
+  DRAKE_EXPECT_THROWS_MESSAGE(
       system_.CalcUnrestrictedUpdate(
           *context, leaf_events.get_unrestricted_update_events(), x.get()),
-      std::logic_error);
+      ".*dimensions cannot be changed.*");
 
   // Restore the discrete state (size).
   x->set_discrete_state(std::make_unique<DiscreteValues<double>>(
@@ -1808,10 +1742,10 @@ TEST_F(LeafSystemTest, CallbackAndInvalidUpdates) {
 
   // Call the unrestricted update function again, again verifying that an
   // exception is thrown.
-  EXPECT_THROW(
+  DRAKE_EXPECT_THROWS_MESSAGE(
       system_.CalcUnrestrictedUpdate(
           *context, leaf_events.get_unrestricted_update_events(), x.get()),
-      std::logic_error);
+      ".*dimensions cannot be changed.*");
 }
 
 // Tests that the next update time is computed correctly for LeafSystems
@@ -1843,9 +1777,10 @@ class DefaultFeedthroughSystem : public LeafSystem<double> {
     return this->DeclareVectorInputPort(kUseDefaultName, size).get_index();
   }
 
-  InputPortIndex AddAbstractInputPort() {
-    return this->DeclareAbstractInputPort(
-        kUseDefaultName, Value<std::string>{}).get_index();
+  template <typename Name = UseDefaultName>
+  InputPortIndex AddAbstractInputPort(Name name = kUseDefaultName) {
+    return this->DeclareAbstractInputPort(name, Value<std::string>{})
+        .get_index();
   }
 
   OutputPortIndex AddAbstractOutputPort(
@@ -2344,71 +2279,27 @@ GTEST_TEST(LeafSystemCloneTest, Unsupported) {
 
 GTEST_TEST(GraphvizTest, Attributes) {
   DefaultFeedthroughSystem system;
+  system.set_name("<hello&world>");
   const std::string dot = system.GetGraphvizString();
   // Check that left-to-right ranking is imposed.
   EXPECT_THAT(dot, ::testing::HasSubstr("rankdir=LR"));
   // Check that NiceTypeName provides a bold class header.
   EXPECT_THAT(dot, ::testing::HasSubstr("<B>DefaultFeedthroughSystem</B>"));
-}
-
-// Remove this on 2024-01-01.
-GTEST_TEST(GraphvizTest, DeprecatedId) {
-  DefaultFeedthroughSystem system;
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-  ASSERT_NE(system.GetGraphvizId(), 0);
-#pragma GCC diagnostic pop
-}
-
-// Remove this on 2024-01-01.
-class LegacyCustomGraphviz final : public LeafSystem<double> {
- public:
-  LegacyCustomGraphviz() {
-    DeclareVectorInputPort("u0", 1);
-    auto calc = [](const Context<double>&, BasicVector<double>*) {};
-    DeclareVectorOutputPort("y0", 1, calc);
-    DeclareVectorOutputPort("y1", 2, calc);
-  }
-
-  using SystemBase::GetGraphvizFragment;
-
- protected:
-  void GetGraphvizFragment(int max_depth, std::stringstream* dot) const final {
-    DRAKE_THROW_UNLESS(max_depth >= 0);
-    *dot << "// The first ten million years were the worst,\n"
-            "// and the second ten million years, they were the worst too.\n"
-            "// The third ten million years I didn't enjoy at all.\n"
-            "// After that I went into a bit of a decline.\n";
-  }
-};
-
-// Remove this on 2024-01-01.
-GTEST_TEST(GraphvizTest, DeprecatedLegacyCustomGraphviz) {
-  const std::map<std::string, std::string> options;
-  LegacyCustomGraphviz dut;
-  const SystemBase::GraphvizFragment result =
-      dut.GetGraphvizFragment(std::nullopt, options);
-
-  ASSERT_EQ(result.fragments.size(), 1);
-  EXPECT_THAT(result.fragments.front(),
-              ::testing::HasSubstr("a bit of a decline"));
-
-  ASSERT_EQ(result.input_ports.size(), 1);
-  ASSERT_EQ(result.output_ports.size(), 2);
-  EXPECT_NE(result.input_ports.front(), "");
-  EXPECT_NE(result.output_ports.front(), "");
-  EXPECT_NE(result.output_ports.back(), "");
+  // Check that HTML special characters the name were replaced.
+  EXPECT_THAT(dot, ::testing::HasSubstr("name=&lt;hello&amp;world&gt;"));
 }
 
 GTEST_TEST(GraphvizTest, Ports) {
   DefaultFeedthroughSystem system;
   system.AddVectorInputPort(/* size = */ 0);
-  system.AddAbstractInputPort();
+  system.AddAbstractInputPort(/*name = */ "<force&torque>");
   system.AddAbstractOutputPort();
   const std::string dot = system.GetGraphvizString();
   EXPECT_THAT(dot, ::testing::HasSubstr("PORT=\"u0\""));
   EXPECT_THAT(dot, ::testing::HasSubstr("PORT=\"u1\""));
   EXPECT_THAT(dot, ::testing::HasSubstr("PORT=\"y0\""));
+  // Check that HTML special characters port names were replaced.
+  EXPECT_THAT(dot, ::testing::HasSubstr("&lt;force&amp;torque&gt;"));
 }
 
 GTEST_TEST(GraphvizTest, Split) {
@@ -2425,115 +2316,6 @@ GTEST_TEST(GraphvizTest, Split) {
   options.emplace("split", "I/O");
   dot = system.GetGraphvizString({}, options);
   EXPECT_THAT(dot, ::testing::HasSubstr("(split)"));
-}
-
-// This class serves as the mechanism by which we confirm that LeafSystem's
-// implementation of DispatchPublishHandler() actually calls DoPublish() and,
-// furthermore, the per-event dispatch implemented in DoPublish is completely
-// replaced by an overridden implementation.
-//
-// The system has to be able to detect when its DoPublish() is called but also
-// has to allow us to detect the difference between the built-in LeafSystem
-// publish event dispatching and the overridden behavior.
-// We do this in the following way:
-//
-//   1. We create a system that overrides DoPublish().
-//     a. The system can be configured to run in one of two modes:
-//        i. Ignore publish events.
-//        ii. Use default publication dispatch.
-//        iii. In either mode, we increment a counter that will allow us to
-//             recognize that our DoPublish override got exercised.
-//     b. The system declares one force publish event.
-//        i. The force event allows us to test both APIs
-//           System::Publish(context) and System::Publish(context, events). As
-//           all other trigger types exercise the two apis, we'll ignore other
-//           trigger types.
-//        ii. The event handler increments a counter allowing us to recognize
-//            when the *event* has been handled.
-//   2. We instantiate the system and evaluate the force events on it.
-//      i. In the "default" mode, we should see DoPublish() and the event
-//         handler invoked. This allows us to observe the "default" behavior and
-//         see that it changes.
-//      ii. In the "ignore events" mode, we expect DoPublish() to be called but
-//         not the event handler - we'll have completely supplanted the
-//         LeafSystem::DoPublish implementation).
-class DoPublishOverrideSystem : public LeafSystem<double> {
- public:
-  /* Constructs the system to *default* event handling -- events will *not*
-   be ignored. */
-  DoPublishOverrideSystem() : LeafSystem<double>() {
-    DeclareForcedPublishEvent(&DoPublishOverrideSystem::HandleEvent);
-  }
-
-  bool ignore_events() const { return ignore_events_; }
-  void set_ignore_events(bool ignore_events) { ignore_events_ = ignore_events; }
-  int do_publish_count() const { return do_publish_count_; }
-  int event_handle_count() const { return event_handle_count_; }
-
-  EventStatus HandleEvent(const Context<double>&) const {
-    ++event_handle_count_;
-    return EventStatus::Succeeded();
-  }
-
-  // We need public access to the event collection to call
-  // Publish(context, events).
-  const EventCollection<PublishEvent<double>>&
-  get_forced_publish_events_collection() const {
-    return get_forced_publish_events();
-  }
-
- private:
-  void DoPublish(
-      const Context<double>& context,
-      const std::vector<const PublishEvent<double>*>& events) const override {
-    ++do_publish_count_;
-    if (!ignore_events_) LeafSystem<double>::DoPublish(context, events);
-  }
-
-  // If true, DoPublish ignores events, calls LeafSystem::DoPublish() if false.
-  bool ignore_events_{false};
-
-  // These mutable system members are an anti-pattern only acceptable as part of
-  // a unit test.
-
-  // The number of times DoPublish() has been called on this instance.
-  mutable int do_publish_count_{0};
-
-  // The number of times the force publish event handler has been called on this
-  // instance.
-  mutable int event_handle_count_{0};
-};
-
-GTEST_TEST(DoPublishOverrideTest, ConfirmOverride) {
-  DoPublishOverrideSystem system;
-  std::unique_ptr<Context<double>> context = system.CreateDefaultContext();
-  const EventCollection<PublishEvent<double>>& events =
-      system.get_forced_publish_events_collection();
-
-  // First test default behaviors - DoPublish gets called and event handler
-  // get called.
-  ASSERT_FALSE(system.ignore_events());
-  ASSERT_EQ(system.do_publish_count(), 0);
-  ASSERT_EQ(system.event_handle_count(), 0);
-
-  system.ForcedPublish(*context);
-  EXPECT_EQ(system.do_publish_count(), 1);
-  EXPECT_EQ(system.event_handle_count(), 1);
-  system.Publish(*context, events);
-  EXPECT_EQ(system.do_publish_count(), 2);
-  EXPECT_EQ(system.event_handle_count(), 2);
-
-  // Now ignore default behaviors. This confirms *our* DoPublish completely
-  // supplants the default behavior.
-  system.set_ignore_events(true);
-  ASSERT_TRUE(system.ignore_events());
-
-  system.ForcedPublish(*context);
-  EXPECT_EQ(system.do_publish_count(), 3);
-  EXPECT_EQ(system.event_handle_count(), 2);
-  system.Publish(*context, events);
-  EXPECT_EQ(system.do_publish_count(), 4);
-  EXPECT_EQ(system.event_handle_count(), 2);
 }
 
 // The custom context type for the CustomContextSystem.
@@ -2895,12 +2677,15 @@ GTEST_TEST(InitializationTest, ManualEventProcessing) {
   EXPECT_EQ(init_events->get_system_id(), context->get_system_id());
   dut.GetInitializationEvents(*context, init_events.get());
 
-  dut.Publish(*context, init_events->get_publish_events());
-  dut.CalcDiscreteVariableUpdate(*context,
+  EventStatus status = dut.Publish(*context, init_events->get_publish_events());
+  EXPECT_TRUE(status.succeeded());
+  status = dut.CalcDiscreteVariableUpdate(*context,
                                  init_events->get_discrete_update_events(),
                                  discrete_updates.get());
-  dut.CalcUnrestrictedUpdate(
+  EXPECT_TRUE(status.succeeded());
+  status = dut.CalcUnrestrictedUpdate(
       *context, init_events->get_unrestricted_update_events(), state.get());
+  EXPECT_TRUE(status.succeeded());
 
   EXPECT_TRUE(dut.get_pub_init());
   EXPECT_TRUE(dut.get_dis_update_init());
@@ -2922,13 +2707,12 @@ GTEST_TEST(InitializationTest, DefaultEventProcessing) {
   EXPECT_TRUE(context->get_abstract_state<bool>(0));
 }
 
-// Although many of the tests above validate behavior of events when the
-// event dispatchers DoPublish() etc are overridden, the preferred method
-// for users is to provide individual handler functions for each event. There
-// is a set of sugar methods to facilitate that; this class uses them all.
+// This class uses every one of the functions that declare events.
 class EventSugarTestSystem : public LeafSystem<double> {
  public:
-  EventSugarTestSystem() {
+  explicit EventSugarTestSystem(EventStatus::Severity desired_status =
+      EventStatus::kSucceeded)
+      : desired_status_(desired_status) {
     DeclareInitializationPublishEvent(
         &EventSugarTestSystem::MyPublishHandler);
     DeclareInitializationDiscreteUpdateEvent(
@@ -2994,38 +2778,38 @@ class EventSugarTestSystem : public LeafSystem<double> {
  private:
   EventStatus MyPublishHandler(const Context<double>& context) const {
     MySuccessfulPublishHandler(context);
-    return EventStatus::Succeeded();
+    return MakeStatus();
   }
 
   EventStatus MySecondPublishHandler(const Context<double>& context) const {
     ++num_second_publish_handler_publishes_;
-    return EventStatus::Succeeded();
+    return MakeStatus();
   }
 
   EventStatus MyDiscreteUpdateHandler(
       const Context<double>& context,
       DiscreteValues<double>* discrete_state) const {
     MySuccessfulDiscreteUpdateHandler(context, &*discrete_state);
-    return EventStatus::Succeeded();
+    return MakeStatus();
   }
 
   EventStatus MySecondDiscreteUpdateHandler(
       const Context<double>& context,
       DiscreteValues<double>* discrete_state) const {
     ++num_second_discrete_update_;
-    return EventStatus::Succeeded();
+    return MakeStatus();
   }
 
   EventStatus MyUnrestrictedUpdateHandler(const Context<double>& context,
                                           State<double>* state) const {
     MySuccessfulUnrestrictedUpdateHandler(context, &*state);
-    return EventStatus::Succeeded();
+    return MakeStatus();
   }
 
   EventStatus MySecondUnrestrictedUpdateHandler(const Context<double>& context,
                                                 State<double>* state) const {
     ++num_second_unrestricted_update_;
-    return EventStatus::Succeeded();
+    return MakeStatus();
   }
 
   void MySuccessfulPublishHandler(const Context<double>&) const {
@@ -3041,6 +2825,22 @@ class EventSugarTestSystem : public LeafSystem<double> {
                                              State<double>*) const {
     ++num_unrestricted_update_;
   }
+
+  EventStatus MakeStatus() const {
+    switch (desired_status_) {
+      case EventStatus::kDidNothing:
+        return EventStatus::DidNothing();
+      case EventStatus::kSucceeded:
+        return EventStatus::Succeeded();
+      case EventStatus::kReachedTermination:
+        return EventStatus::ReachedTermination(this, "Terminated");
+      case EventStatus::kFailed:
+        return EventStatus::Failed(this, "Something bad happened");
+    }
+    DRAKE_UNREACHABLE();
+  }
+
+  const EventStatus::Severity desired_status_;
 
   mutable int num_publish_{0};
   mutable int num_second_publish_handler_publishes_{0};
@@ -3097,13 +2897,16 @@ GTEST_TEST(EventSugarTest, HandlersGetCalled) {
   dut.GetPeriodicEvents(*context, &*periodic_events);
   all_events->AddToEnd(*periodic_events);
 
-  dut.CalcUnrestrictedUpdate(
+  EventStatus status = dut.CalcUnrestrictedUpdate(
       *context, all_events->get_unrestricted_update_events(), &*state);
+  EXPECT_TRUE(status.succeeded());
   dut.CalcForcedUnrestrictedUpdate(*context, &*state);
-  dut.CalcDiscreteVariableUpdate(
+  status = dut.CalcDiscreteVariableUpdate(
       *context, all_events->get_discrete_update_events(), &*discrete_state);
+  EXPECT_TRUE(status.succeeded());
   dut.CalcForcedDiscreteVariableUpdate(*context, &*discrete_state);
-  dut.Publish(*context, all_events->get_publish_events());
+  status = dut.Publish(*context, all_events->get_publish_events());
+  EXPECT_TRUE(status.succeeded());
   dut.ForcedPublish(*context);
 
   EXPECT_EQ(dut.num_publish(), 5);
@@ -3112,6 +2915,65 @@ GTEST_TEST(EventSugarTest, HandlersGetCalled) {
   EXPECT_EQ(dut.num_second_discrete_update(), 1);
   EXPECT_EQ(dut.num_unrestricted_update(), 5);
   EXPECT_EQ(dut.num_second_unrestricted_update(), 1);
+}
+
+// Verify that user-initiated event APIs throw on handler failure.
+GTEST_TEST(EventSugarTest, ForcedEventsThrowOnFailure) {
+  EventSugarTestSystem dut(EventStatus::kFailed);
+  dut.set_name("dut");
+  auto context = dut.CreateDefaultContext();
+
+  DRAKE_EXPECT_THROWS_MESSAGE(
+      dut.ForcedPublish(*context),
+      "ForcedPublish.*event handler.*"
+      "EventSugarTestSystem.*dut.*failed.*Something bad happened.*");
+
+  auto discrete_state = dut.AllocateDiscreteVariables();
+  DRAKE_EXPECT_THROWS_MESSAGE(
+      dut.CalcForcedDiscreteVariableUpdate(*context, &*discrete_state),
+      "CalcForcedDiscreteVariableUpdate.*event handler.*"
+      "EventSugarTestSystem.*dut.*failed.*Something bad happened.*");
+
+  auto state = context->CloneState();
+  DRAKE_EXPECT_THROWS_MESSAGE(
+      dut.CalcForcedUnrestrictedUpdate(*context, &*state),
+      "CalcForcedUnrestrictedUpdate.*event handler.*"
+      "EventSugarTestSystem.*dut.*failed.*Something bad happened.*");
+
+  DRAKE_EXPECT_THROWS_MESSAGE(
+      dut.ExecuteInitializationEvents(&*context),
+      "ExecuteInitializationEvents.*event handler.*"
+      "EventSugarTestSystem.*dut.*failed.*Something bad happened.*");
+}
+
+// Verify that user-initiated event APIs don't throw for any status less
+// than failure (including "reached termination").
+GTEST_TEST(EventSugarTest, ForcedEventsDontThrowWhenNoFailure) {
+  EventSugarTestSystem successful(EventStatus::kSucceeded);
+  EventSugarTestSystem terminating(EventStatus::kReachedTermination);
+  auto successful_context = successful.CreateDefaultContext();
+  auto terminating_context = terminating.CreateDefaultContext();
+
+  EXPECT_NO_THROW(successful.ForcedPublish(*successful_context));
+  EXPECT_NO_THROW(terminating.ForcedPublish(*terminating_context));
+
+  auto successful_discrete_state = successful.AllocateDiscreteVariables();
+  auto terminating_discrete_state = terminating.AllocateDiscreteVariables();
+  EXPECT_NO_THROW(successful.CalcForcedDiscreteVariableUpdate(
+      *successful_context, &*successful_discrete_state));
+  EXPECT_NO_THROW(terminating.CalcForcedDiscreteVariableUpdate(
+      *terminating_context, &*terminating_discrete_state));
+
+  auto successful_state = successful_context->CloneState();
+  auto terminating_state = terminating_context->CloneState();
+  EXPECT_NO_THROW(successful.CalcForcedUnrestrictedUpdate(*successful_context,
+                                                          &*successful_state));
+  EXPECT_NO_THROW(terminating.CalcForcedUnrestrictedUpdate(
+      *terminating_context, &*terminating_state));
+
+  EXPECT_NO_THROW(successful.ExecuteInitializationEvents(&*successful_context));
+  EXPECT_NO_THROW(
+      terminating.ExecuteInitializationEvents(&*terminating_context));
 }
 
 // A System that does not override the default implicit time derivatives

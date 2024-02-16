@@ -62,8 +62,9 @@
         <limit>
           <lower>-2.96706</lower>
           <upper>2.96706</upper>
-          <effort>300</effort>
-          <velocity>10</velocity>
+          <effort>176</effort>
+          <velocity>1.7104226670</velocity>
+          <drake:acceleration>8.65</drake:acceleration>
         </limit>
         <dynamics>
           <damping>0.0</damping>
@@ -72,6 +73,8 @@
           <spring_stiffness>0</spring_stiffness>
         </dynamics>
       </axis>
+      <drake:gear_ratio>160.0</drake:gear_ratio>
+      <drake:rotor_inertia>0.00007171875</drake:rotor_inertia>
     </joint>
     <link name="iiwa_link_2">
       <pose>0 0 0.3405 1.5708 0 -3.14159</pose>
@@ -82,9 +85,9 @@
           <ixx>0.0170</ixx>
           <ixy>0</ixy>
           <ixz>0</ixz>
-          <iyy>0.0162</iyy>
+          <iyy>0.0061</iyy>
           <iyz>0</iyz>
-          <izz>0.0061</izz>
+          <izz>0.0162</izz>
         </inertia>
       </inertial>
       <visual name="iiwa_link_2_visual">
@@ -108,8 +111,9 @@
         <limit>
           <lower>-2.0944</lower>
           <upper>2.0944</upper>
-          <effort>300</effort>
-          <velocity>10</velocity>
+          <effort>176</effort>
+          <velocity>1.7104226670</velocity>
+          <drake:acceleration>5.44</drake:acceleration>
         </limit>
         <dynamics>
           <damping>0.0</damping>
@@ -118,6 +122,8 @@
           <spring_stiffness>0</spring_stiffness>
         </dynamics>
       </axis>
+      <drake:gear_ratio>160.0</drake:gear_ratio>
+      <drake:rotor_inertia>0.0001737109</drake:rotor_inertia>
     </joint>
     <link name="iiwa_link_3">
       <pose>0 0 0.5245 0 0 0</pose>
@@ -154,8 +160,9 @@
         <limit>
           <lower>-2.96706</lower>
           <upper>2.96706</upper>
-          <effort>300</effort>
-          <velocity>10</velocity>
+          <effort>110</effort>
+          <velocity>1.7453292520</velocity>
+          <drake:acceleration>5.69</drake:acceleration>
         </limit>
         <dynamics>
           <damping>0.0</damping>
@@ -164,6 +171,8 @@
           <spring_stiffness>0</spring_stiffness>
         </dynamics>
       </axis>
+      <drake:gear_ratio>160.0</drake:gear_ratio>
+      <drake:rotor_inertia>0.0001266406</drake:rotor_inertia>
     </joint>
     <link name="iiwa_link_4">
       <pose>0 0 0.74 1.5708 0 0</pose>
@@ -174,9 +183,9 @@
           <ixx>0.017</ixx>
           <ixy>0</ixy>
           <ixz>0</ixz>
-          <iyy>0.0162</iyy>
+          <iyy>0.0061</iyy>
           <iyz>0</iyz>
-          <izz>0.0061</izz>
+          <izz>0.0162</izz>
         </inertia>
       </inertial>
       <visual name="iiwa_link_4_visual">
@@ -200,8 +209,9 @@
         <limit>
           <lower>-2.0944</lower>
           <upper>2.0944</upper>
-          <effort>300</effort>
-          <velocity>10</velocity>
+          <effort>110</effort>
+          <velocity>2.2689280276</velocity>
+          <drake:acceleration>11.01</drake:acceleration>
         </limit>
         <dynamics>
           <damping>0.0</damping>
@@ -210,6 +220,8 @@
           <spring_stiffness>0</spring_stiffness>
         </dynamics>
       </axis>
+      <drake:gear_ratio>160.0</drake:gear_ratio>
+      <drake:rotor_inertia>0.0000709765</drake:rotor_inertia>
     </joint>
     <link name="iiwa_link_5">
       <pose>0 0 0.924 0 0 -3.14159</pose>
@@ -246,8 +258,9 @@
         <limit>
           <lower>-2.96706</lower>
           <upper>2.96706</upper>
-          <effort>300</effort>
-          <velocity>10</velocity>
+          <effort>110</effort>
+          <velocity>2.4434609528</velocity>
+          <drake:acceleration>11.78</drake:acceleration>
         </limit>
         <dynamics>
           <damping>0.0</damping>
@@ -256,6 +269,8 @@
           <spring_stiffness>0</spring_stiffness>
         </dynamics>
       </axis>
+      <drake:gear_ratio>160.0</drake:gear_ratio>
+      <drake:rotor_inertia>0.000054375</drake:rotor_inertia>
     </joint>
     <link name="iiwa_link_6">
       <pose>0 0 1.1395 1.5708 0 -3.14159</pose>
@@ -293,8 +308,9 @@
         <limit>
           <lower>-2.0944</lower>
           <upper>2.0944</upper>
-          <effort>300</effort>
-          <velocity>10</velocity>
+          <effort>40</effort>
+          <velocity>3.1415926536</velocity>
+          <drake:acceleration>13.76</drake:acceleration>
         </limit>
         <dynamics>
           <damping>0.0</damping>
@@ -303,6 +319,8 @@
           <spring_stiffness>0</spring_stiffness>
         </dynamics>
       </axis>
+      <drake:gear_ratio>160.0</drake:gear_ratio>
+      <drake:rotor_inertia>0.000054765</drake:rotor_inertia>
     </joint>
     <link name="iiwa_link_7">
       <pose>0 0 1.22 0 0 0</pose>
@@ -339,8 +357,9 @@
         <limit>
           <lower>-3.05433</lower>
           <upper>3.05433</upper>
-          <effort>300</effort>
-          <velocity>10</velocity>
+          <effort>40</effort>
+          <velocity>3.1415926536</velocity>
+          <drake:acceleration>13.17</drake:acceleration>
         </limit>
         <dynamics>
           <damping>0.0</damping>
@@ -349,6 +368,8 @@
           <spring_stiffness>0</spring_stiffness>
         </dynamics>
       </axis>
+      <drake:gear_ratio>160.0</drake:gear_ratio>
+      <drake:rotor_inertia>0.000054375</drake:rotor_inertia>
     </joint>
     <static>0</static>
   </model>
